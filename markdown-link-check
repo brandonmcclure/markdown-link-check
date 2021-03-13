@@ -34,6 +34,7 @@ program
     .option('-v, --verbose', 'displays detailed error information')
     .option('-a, --alive <code>', 'comma separated list of HTTP codes to be considered as alive', commaSeparatedCodesList)
     .option('-r, --retry', 'retry after the duration indicated in \'retry-after\' header when HTTP code is 429')
+    .option('-j', '--json', 'Output the results in JSON format')
     .arguments('[filenameOrUrl]')
     .action(function (filenameOrUrl) {
     filenameForOutput = filenameOrUrl;
@@ -78,6 +79,7 @@ opts.showProgressBar = (program.progress === true); // force true or undefined t
 opts.quiet = (program.quiet === true);
 opts.verbose = (program.verbose === true);
 opts.retryOn429 = (program.retry === true);
+opts.jsonOutput = true;//(program.json === true);
 opts.aliveStatusCodes = program.alive;
 // set the projectBaseUrl to the current working directory, so that `{{BASEURL}}` can be resolved to the project root.
 opts.projectBaseUrl = `file://${process.cwd()}`;
@@ -97,8 +99,13 @@ stream
     return process.exit(1);
   })
   .on('end', function () {
+    var outObj = {};
     if (filenameForOutput) {
-        console.log(chalk.cyan('\nFILE: ' + filenameForOutput));
+        if(opts.jsonOutput){outObj.filename = filenameForOutput;}
+        else{
+            console.log(opts);
+            console.log(chalk.cyan('\nFILE: ' + filenameForOutput));
+        }
     }
 
     if (program.config) {
@@ -121,6 +128,7 @@ stream
                     opts.retryCount = config.retryCount;
                     opts.fallbackRetryDelay = config.fallbackRetryDelay;
                     opts.aliveStatusCodes = config.aliveStatusCodes;
+                    opts.jsonOutput = config.jsonOutput;
 
                     runMarkdownLinkCheck(markdown, opts);
                 });
@@ -132,11 +140,11 @@ stream
         });
     }
     else {
-        runMarkdownLinkCheck(markdown, opts);
+        runMarkdownLinkCheck(markdown, opts,outObj);
     }
 });
 
-function runMarkdownLinkCheck(markdown, opts) {
+function runMarkdownLinkCheck(markdown, opts,outObj) {
     markdownLinkCheck(markdown, opts, function (err, results) {
         if (err) {
             console.error(chalk.red('\nERROR: something went wrong!'));
@@ -147,6 +155,7 @@ function runMarkdownLinkCheck(markdown, opts) {
         if (results.length === 0 && !opts.quiet) {
             console.log(chalk.yellow('No hyperlinks found!'));
         }
+        if(opts.jsonOutput){ outObj.results = results;console.log(JSON.stringify(outObj)); return;}
         results.forEach(function (result) {
             // Skip messages for non-deadlinks in quiet mode.
             if (opts.quiet && result.status !== 'dead') {
@@ -160,18 +169,23 @@ function runMarkdownLinkCheck(markdown, opts) {
                     console.log('[%s] %s → Status: %s', statusLabels[result.status], result.link, result.statusCode);
                 }
             }
-            else {
-                console.log('[%s] %s', statusLabels[result.status], result.link);
-            }
+            // else {
+            //     //console.log('[%s] %s', statusLabels[result.status], result.link);
+            // }
         });
-        console.log('\n%s links checked.', results.length);
+        
+        if(opts.jsonOutput){ outObj.NumberOfLinksCheked = results.length;}
+        else{console.log('\n%s links checked.', results.length);}
         if (results.some((result) => result.status === 'dead')) {
             let deadLinks = results.filter(result => { return result.status === 'dead'; });
-            console.error(chalk.red('\nERROR: %s dead links found!'), deadLinks.length);
+            if(opts.jsonOutput){outObj.NumberOfDeadLinks = deadLinks.length;}
+            else{console.error(chalk.red('\nERROR: %s dead links found!'), deadLinks.length);}
             deadLinks.forEach(function (result) {
                 console.log('[%s] %s → Status: %s', statusLabels[result.status], result.link, result.statusCode);
             });
             process.exit(1);
         }
+        
+        
     });
 }
